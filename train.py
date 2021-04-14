@@ -4,12 +4,12 @@ from torch import nn
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm
-import time
 
 import argparse
 
 from discriminator import Discriminator
 from generator import Generator
+from DiffAugment_pytorch import DiffAugment
 
 def train(args):
     
@@ -19,6 +19,8 @@ def train(args):
     batch_size = args.batch_size
     latent_dim = args.latent
     
+    policy = 'color, translation'
+    
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     G = Generator(latent_dim).to(device)
@@ -27,9 +29,10 @@ def train(args):
     for i in tqdm(range(iterations)):
         
         noise = torch.Tensor(batch_size, latent_dim, 1, 1).normal_(0, 1).to(device)
-        fake_imgs = G(noise)
+        gen_imgs = G(noise)
         
-    
+        fake_imgs = [DiffAugment(gi, policy=policy) for gi in gen_imgs] 
+        
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='lightweight gan')
     
