@@ -12,20 +12,21 @@ class DownSampleConv(nn.Module):
         self.downsample_conv = nn.Sequential(
             nn.Conv2d(chan_in, chan_out, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(chan_out),
+            nn.LeakyReLU(0.2),
             nn.Conv2d(chan_out, chan_out, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(chan_out),
             nn.LeakyReLU(0.2)
         )
         
         self.averagepool_conv = nn.Sequential(
-            nn.AdaptiveAvgPool2d(2),
+            nn.AvgPool2d(2),
             nn.Conv2d(chan_in, chan_out, kernel_size=1),
             nn.BatchNorm2d(chan_out),
             nn.LeakyReLU(0.2)
         )
         
     def forward(self, input_img):
-        return self.downsample_conv(input_img) + self.averagepool_conv(input_img)
+        return (self.downsample_conv(input_img) + self.averagepool_conv(input_img))/2
     
     
 class SimpleDecoder(nn.Module):
@@ -40,16 +41,25 @@ class SimpleDecoder(nn.Module):
                 nn.BatchNorm2d(chan_out*2),
                 nn.GLU(dim=1)
             )
+            return decoder_block
         
         self.simple_decoder = nn.Sequential(
             decoderBlock(input_chan, input_chan//2),
             decoderBlock(input_chan//2, input_chan//4),
             decoderBlock(input_chan//4, input_chan//8),
-            decoderBlock(input_chan//8, 3),
+            decoderBlock(input_chan//8, 3)
         )
     
     def forward(self, input_img):
         return self.simple_decoder(input_img)
+    
+def crop(input_img, size):
+    img_size = input_img.shape[3]
+    
+    x = np.random.randint(img_size-size+1)
+    y = np.random.randint(img_size-size+1)
+    return input_img[:,:,x:x+size,y:y+size]
+        
 
 class Discriminator(nn.Module):
     
@@ -82,7 +92,8 @@ class Discriminator(nn.Module):
         )
     
     def forward(self, input_img):
-        img256 = self.inital_conv(input_img)
+        cropimg128 = crop(input_img, 128)
+        img256 = self.initial_conv(input_img)
         
         img128 = self.from256to128(img256)
         img64 = self.from128to64(img128)
@@ -90,11 +101,18 @@ class Discriminator(nn.Module):
         img16 = self.from32to16(img32)
         img8 = self.from16to8(img16)
         
-        cropimg8 = crop(img16)
+        cropimg8 = crop(img16, 8)
         decoded_img1 = self.decoder1(cropimg8)
         decoded_img2 = self.decoder2(img8)
         
         logits = self.final_conv(img8)
+        
+        return logits
 
 if __name__ == '__main__':
-    pass
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    input_image = torch.rand(1,3,1024,1024).to(device)
+    D = Discriminator().to(device)
+    output = D.forward(input_image)
+    print(output)
+    
