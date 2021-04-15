@@ -53,12 +53,13 @@ class SimpleDecoder(nn.Module):
     def forward(self, input_img):
         return self.simple_decoder(input_img)
     
-def crop(input_img, size):
-    img_size = input_img.shape[3]
+def crop(input_big, input_sml, l_size, s_size):
+    img_size = input_sml.shape[3]
     
-    x = np.random.randint(img_size-size+1)
-    y = np.random.randint(img_size-size+1)
-    return input_img[:,:,x:x+size,y:y+size]
+    r = l_size//s_size
+    x = np.random.randint(img_size-s_size+1)
+    y = np.random.randint(img_size-s_size+1)
+    return input_big[:,:,x*r:x*r+l_size,y*r:y*r+l_size], input_sml[:,:,x:x+s_size,y:y+s_size]
         
 
 class Discriminator(nn.Module):
@@ -91,8 +92,7 @@ class Discriminator(nn.Module):
             nn.Conv2d(1024, 1, kernel_size=4)
         )
     
-    def forward(self, input_img):
-        cropimg128 = crop(input_img, 128)
+    def forward(self, input_img, label):
         img256 = self.initial_conv(input_img)
         
         img128 = self.from256to128(img256)
@@ -100,19 +100,21 @@ class Discriminator(nn.Module):
         img32 = self.from64to32(img64)
         img16 = self.from32to16(img32)
         img8 = self.from16to8(img16)
-        
-        cropimg8 = crop(img16, 8)
-        decoded_img1 = self.decoder1(cropimg8)
-        decoded_img2 = self.decoder2(img8)
-        
+                
         logits = self.final_conv(img8)
         
+        if label == 'real':
+            cropimg512, cropimg8 = crop(input_img, img16, 512, 8)
+            decoded_img1 = self.decoder1(cropimg8)
+            decoded_img2 = self.decoder2(img8)
+            return logits, cropimg512, decoded_img1, decoded_img2
+
         return logits
 
 if __name__ == '__main__':
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     input_image = torch.rand(1,3,1024,1024).to(device)
     D = Discriminator().to(device)
-    output = D.forward(input_image)
+    output = D.forward(input_image, label='false')
     print(output)
     
