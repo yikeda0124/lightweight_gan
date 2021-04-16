@@ -16,6 +16,18 @@ from generator import Generator
 from dataloader import CustomImageDataset
 from DiffAugment_pytorch import DiffAugment
 
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        try:
+            m.weight.data.normal_(0.0, 0.02)
+        except:
+            pass
+    elif classname.find('BatchNorm') != -1:
+        m.weight.data.normal_(1.0, 0.02)
+        m.bias.data.fill_(0)
+
+
 class Train():
     
     def __init__(self, args):
@@ -32,6 +44,9 @@ class Train():
         
         self.G = Generator(self.latent_dim).to(self.device)
         self.D = Discriminator().to(self.device)
+        
+        self.G.apply(weights_init)
+        self.D.apply(weights_init)
         
         self.G_optim = optim.Adam(self.G.parameters(), lr=0.0002, betas=(0.5, 0.999))
         self.D_optim = optim.Adam(self.D.parameters(), lr=0.0002, betas=(0.5, 0.999))
@@ -61,17 +76,21 @@ class Train():
             fake_imgs = DiffAugment(gen_imgs, policy=self.policy)
             
             self.D.zero_grad()
-            loss1, decoded_img1, decoded_img2 = self.train_discriminator(real_imgs, label='real')
-            loss2 = self.train_discriminator(fake_imgs, label='fake')
+            self.train_discriminator(real_imgs, label='real')
+            self.train_discriminator(fake_imgs, label='fake')
             self.D_optim.step()
-            print(loss1, loss2)
             
             self.G.zero_grad()
             pred = self.D(fake_imgs, label='fake')
             loss3 = -pred.mean()
             loss3.backward()
             self.G_optim.step()
-            print(loss3)
+            
+        noise = torch.Tensor(cur_batch_size, self.latent_dim, 1, 1).normal_(0, 1).to(self.device, non_blocking=True)
+        gen_imgs = self.G(noise)
+        img = gen_imgs[0].cpu().detach().numpy().copy()
+        plt.imshow(img.transpose(1, 2, 0))
+        plt.show()
     
     def train_discriminator(self, image, label):
         if label == 'real':
@@ -80,20 +99,18 @@ class Train():
                 self.mse(decoded_img1, F.interpolate(image, decoded_img1.shape[2])).sum() + \
                 self.mse(decoded_img2, F.interpolate(cropimg512, decoded_img2.shape[2])).sum()
             loss.backward(retain_graph=True)
-            return logits.mean().item(), decoded_img1, decoded_img2
+
         else:
             logits = self.D(image, label)
             loss = F.relu(torch.rand_like(logits)*0.2 + 0.8 + logits).mean()
             loss.backward(retain_graph=True)
-            return logits.mean().item()
             
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='lightweight gan')
     
     parser.add_argument('root', type=str, help='root of dataset')
-    parser.add_argument('--iter', type=int, default=50000, help='number of iterations')
+    parser.add_argument('--iter', type=int, default=1000, help='number of iterations')
     parser.add_argument('--im_size', type=int, default=1024, help='image resolution')
     parser.add_argument('--batch_size', type=int, default=8, help='mini batch size')
     parser.add_argument('--latent', type=int, default=256, help='number of latent dimentions of generator')
