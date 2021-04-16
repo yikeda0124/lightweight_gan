@@ -85,7 +85,13 @@ class Train():
             loss3 = -pred.mean()
             loss3.backward()
             self.G_optim.step()
+        
             
+            if i % 5000 == 0:
+                model_path = 'model' + str(i) + '.pth' 
+                torch.save(self.G.state_dict(), model_path)
+        
+        
         noise = torch.Tensor(cur_batch_size, self.latent_dim, 1, 1).normal_(0, 1).to(self.device, non_blocking=True)
         gen_imgs = self.G(noise)
         img = gen_imgs[0].cpu().detach().numpy().copy()
